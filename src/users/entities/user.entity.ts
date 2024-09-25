@@ -1,4 +1,8 @@
-import { IdEntity, TimestampEntity } from '../../core/mixins/entity-mixins';
+import {
+  BaseEntityMixin,
+  IdEntity,
+  TimestampEntity,
+} from '../../core/mixins/entity-mixins';
 import {
   Column,
   Entity,
@@ -11,7 +15,7 @@ import { File } from '../../files/entities/file.entity';
 import { Role } from '../../roles/entities/role.entity';
 
 @Entity('users')
-export class User extends TimestampEntity(IdEntity(class {})) {
+export class User extends TimestampEntity(IdEntity(BaseEntityMixin)) {
   @Column({ unique: true })
   email: string;
 

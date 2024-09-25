@@ -1,9 +1,9 @@
 import { Entity, Column, ManyToMany, JoinTable } from 'typeorm';
 import { Role } from '../../roles/entities/role.entity';
-import { IdEntity } from '../../core/mixins/entity-mixins';
+import { BaseEntityMixin, IdEntity } from '../../core/mixins/entity-mixins';
 
 @Entity('permissions')
-export class Permission extends IdEntity(class {}) {
+export class Permission extends IdEntity(BaseEntityMixin) {
   @Column({ unique: true })
   name: string;
 

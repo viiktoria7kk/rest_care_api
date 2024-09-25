@@ -2,9 +2,8 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
-  Column,
+  BaseEntity,
 } from 'typeorm';
-import { IsNotEmpty, IsString, Length } from 'class-validator';
 
 export function IdEntity<T extends new (...args: any[]) => {}>(Base: T) {
   class IdEntityMixin extends Base {
@@ -24,3 +23,5 @@ export function TimestampEntity<T extends new (...args: any[]) => {}>(Base: T) {
   }
   return TimestampEntityMixin;
 }
+
+export class BaseEntityMixin extends BaseEntity {}
