@@ -5,9 +5,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { EmailJwtGuard } from './email-jwt.guard';
 import { Reflector } from '@nestjs/core';
 import { AuthType } from '../enums/auth-type.enum';
 import { AUTH_TYPE_KEY } from '../decorators/auth.decorator';
+import { GoogleAuthGuard } from './google-auth.guard';
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
@@ -15,12 +17,16 @@ export class AuthenticationGuard implements CanActivate {
 
   private readonly authTypeGuardMap: Record<AuthType, CanActivate> = {
     [AuthType.Bearer]: this.jwtAuthGuard,
+    [AuthType.BearerEmailConfirmation]: this.emailJwtGuard,
+    [AuthType.Google]: this.googleAuthGuard,
     [AuthType.None]: { canActivate: () => true } as CanActivate,
   };
 
   constructor(
     private readonly reflector: Reflector,
     private readonly jwtAuthGuard: JwtAuthGuard,
+    private readonly emailJwtGuard: EmailJwtGuard,
+    private readonly googleAuthGuard: GoogleAuthGuard,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

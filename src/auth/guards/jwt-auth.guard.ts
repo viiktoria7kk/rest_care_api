@@ -4,7 +4,6 @@ import {
   ExecutionContext,
   Inject,
   UnauthorizedException,
-  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigType } from '@nestjs/config';
@@ -14,6 +13,7 @@ import jwtConfig from '../../core/config/jwt.config';
 import { AuthRepository } from '../auth.repository';
 import { REQUEST_USER_KEY } from '../constansts/request-user-key.constant';
 import { UserRepository } from '../../users/user.repository';
+import { InjectRepository } from '@nestjs/typeorm';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -22,15 +22,14 @@ export class JwtAuthGuard implements CanActivate {
     @Inject(jwtConfig.KEY)
     private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
     private readonly authRepository: AuthRepository,
-    @Inject(forwardRef(() => UserRepository))
-    private readonly userRepository: UserRepository,
+    @InjectRepository(UserRepository) private userRepository: UserRepository,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const token = this.extractTokenFromHeader(request);
     if (!token) {
-      throw new UnauthorizedException('Token not found!');
+      throw new UnauthorizedException('Token not found');
     }
     try {
       const payload = await this.jwtService.verifyAsync(

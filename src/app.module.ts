@@ -10,6 +10,8 @@ import { MailModule } from './mails/mail.module';
 import { RolesModule } from './roles/roles.module';
 import { PermissionsModule } from './permissions/permission.module';
 import { FileModule } from './files/file.module';
+import { BookingModule } from './booking/booking.module';
+import { ParkingModule } from './parking/parking.module';
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { FileModule } from './files/file.module';
     }),
     JwtModule.registerAsync(jwtConfig.asProvider()),
     UsersModule,
+    BookingModule,
+    ParkingModule,
     AuthModule,
     RedisModule,
     MailModule,

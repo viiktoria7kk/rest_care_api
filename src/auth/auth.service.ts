@@ -5,25 +5,19 @@ import {
   UnauthorizedException,
   InternalServerErrorException,
   Logger,
-  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
 import { Repository } from 'typeorm';
 import jwtConfig from '../core/config/jwt.config';
 import { ConfigType } from '@nestjs/config';
-import { JsonWebTokenError, JwtService } from '@nestjs/jwt';
+import { JwtService } from '@nestjs/jwt';
 import { AuthRepository } from './auth.repository';
 import { ConfigService } from '@nestjs/config';
-import { SignInDto } from './dto/sign-in.dto';
-import { SignUpDto } from './dto/sign-up.dto';
-import { HashingService } from './hashing/hashing.service';
 import { TokensInterface } from './interfaces/token.interface';
-import { UpdatePasswordDto } from './dto/update-password.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
 import { EmailService } from '../mails/mail.service';
 import { Role } from '../roles/entities/role.entity';
+import { EmailDto } from './dto/email.dto';
 
 @Injectable()
 export class AuthService {
@@ -31,7 +25,6 @@ export class AuthService {
 
   constructor(
     @InjectRepository(User) private readonly userRepository: Repository<User>,
-    private readonly hachingService: HashingService,
     private readonly jwtService: JwtService,
     @Inject(jwtConfig.KEY)
     private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
@@ -41,59 +34,107 @@ export class AuthService {
     @InjectRepository(Role) private readonly rolesRepository: Repository<Role>,
   ) {}
 
-  async signUp(signUpDto: SignUpDto): Promise<string> {
+  async googleLogin(userId: number): Promise<TokensInterface> {
     try {
-      const existingUser = await this.userRepository.findOne({
-        where: { email: signUpDto.email },
+      const user = await this.userRepository.findOneOrFail({
+        where: { id: userId },
       });
-      if (existingUser) {
-        throw new BadRequestException('Email is already in use.');
-      }
+      return await this.updateUserTokens(user);
+    } catch (error) {
+      this.logger.error('Error during Google login', error.stack);
+      throw new InternalServerErrorException('Failed to login with Google.');
+    }
+  }
+
+  async SignUpWithEmail(email: string): Promise<TokensInterface> {
+    try {
       const role = await this.rolesRepository.findOne({
         where: { name: 'user' },
       });
 
       const user = new User();
-      user.email = signUpDto.email;
-      user.password = await this.hachingService.hash(signUpDto.password);
+      user.email = email;
       user.roles = [role];
-
       await this.userRepository.save(user);
-      return `User with email ${user.email} has been created successfully.`;
+
+      return await this.updateUserTokens(user);
+    } catch (error) {
+      this.logger.error('Error during email confirmation', error.stack);
+      throw new InternalServerErrorException('Failed to confirm email.');
+    }
+  }
+
+  private async updateUserTokens(user: User): Promise<TokensInterface> {
+    const tokens = await this.generateToken(user);
+    await this.authRepository.updateTokens(user.id, tokens);
+    return tokens;
+  }
+
+  async sendAuthEmail(emailDto: EmailDto): Promise<string> {
+    try {
+      const existingUser = await this.userRepository.findOne({
+        where: { email: emailDto.email },
+      });
+
+      const template = existingUser ? 'confirm-email-sign-in' : 'confirm-email';
+      const signIn = !!existingUser;
+
+      await this.sendConfirmEmailLink(emailDto.email, template, signIn);
+
+      return existingUser
+        ? 'Sign-in link has been sent to your email. Please check your email.'
+        : 'Sign-up link has been sent to your email. Please check your email.';
     } catch (error) {
       this.logger.error('Error during sign-up process', error.stack);
       if (error instanceof BadRequestException) {
         throw error;
       }
+      throw new InternalServerErrorException('Failed to sign up user.');
     }
   }
 
-  async signIn(signInDto: SignInDto): Promise<TokensInterface> {
+  private async sendConfirmEmailLink(
+    email: string,
+    template: string,
+    signIn: boolean,
+  ): Promise<boolean> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { email: signInDto.email },
+      const payload = { email };
+      const token = await this.jwtService.signAsync(payload, {
+        secret: this.jwtConfiguration.secret,
+        expiresIn: '5m',
       });
-      if (!user) {
-        throw new BadRequestException('User not found.');
-      }
+      await this.authRepository.saveTokenWithEmail(email, token);
 
-      const isPasswordValid = await this.hachingService.compare(
-        signInDto.password,
-        user.password,
-      );
-      if (!isPasswordValid) {
-        throw new BadRequestException('Invalid password.');
-      }
-      const tokens = await this.generateToken(user);
-      await this.authRepository.updateTokens(user.id, tokens);
+      const baseUrl = this.configService.get<string>('FRONTEND_URL');
+      const confirmLink = `${baseUrl}/confirm-email${signIn ? '-sign-in' : ''}?token=${token}`;
 
-      return tokens;
+      await this.emailService.sendEmail({
+        to: email,
+        subject: 'Confirm your email',
+        template: template,
+        context: {
+          confirmLink,
+        },
+      });
+      return true;
     } catch (error) {
-      this.logger.error('Error during sign-in process', error.stack);
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new BadRequestException('Invalid login credentials.');
+      this.logger.error('Error sending confirmation email link', error.stack);
+      throw new InternalServerErrorException(
+        'Failed to send confirmation email link.',
+      );
+    }
+  }
+
+  async SignInWithEmail(email: string): Promise<TokensInterface> {
+    try {
+      const user = await this.userRepository.findOneOrFail({
+        where: { email },
+      });
+      return await this.updateUserTokens(user);
+    } catch (error) {
+      this.logger.error('Error during sign-in confirmation', error.stack);
+      throw new InternalServerErrorException('Failed to confirm sign-in.');
     }
   }
 
@@ -127,120 +168,6 @@ export class AuthService {
     }
   }
 
-  async updateUserPassword(
-    user_id: number,
-    password: UpdatePasswordDto,
-  ): Promise<string> {
-    try {
-      const user = await this.userRepository.findOneOrFail({
-        where: { id: user_id },
-      });
-      user.password = await this.hachingService.hash(password.repeatPassword);
-      await this.userRepository.save(user);
-      return `User with id ${user_id} password has been updated`;
-    } catch (error) {
-      this.logger.error('Error during password update process', error.stack);
-      if (error.status === 404) throw error;
-      throw new InternalServerErrorException(
-        `Failed to update user password by ID ${user_id}`,
-      );
-    }
-  }
-
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<string> {
-    try {
-      const user = await this.userRepository.findOne({
-        where: { email: forgotPasswordDto.email },
-      });
-      if (!user) {
-        throw new BadRequestException('User not found.');
-      }
-
-      const tokenExpiration = parseInt(
-        this.configService.get<string>('RESET_PASSWORD_TOKEN_EXPIRATION'),
-        10,
-      );
-      const emailSubject = this.configService.get<string>(
-        'RESET_PASSWORD_EMAIL_SUBJECT',
-      );
-      const token = await this.signToken(user.id, tokenExpiration);
-      await this.authRepository.deleteTokens(user.id);
-      this.logger.log('Generated reset password token', token);
-      await this.authRepository.addResetPasswordToken(user.email, token);
-      this.logger.log('Added reset password token for user', user.email);
-
-      const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-      const link = `${frontendUrl}/reset-password/${token}`;
-      console.log(link);
-      await this.emailService.sendEmail({
-        to: user.email,
-        subject: emailSubject,
-        template: 'reset-password',
-        context: {
-          link,
-        },
-      });
-
-      return 'Reset password email sent.';
-    } catch (error) {
-      this.logger.error('Error during forgot password process', error.stack);
-      throw new NotFoundException(
-        `User with email ${forgotPasswordDto.email} not found.`,
-      );
-    }
-  }
-
-  async resetPassword(
-    resetPasswordDto: ResetPasswordDto,
-    token: string,
-  ): Promise<string> {
-    try {
-      if (resetPasswordDto.password !== resetPasswordDto.repeatPassword) {
-        throw new BadRequestException('Passwords do not match.');
-      }
-
-      const decodedToken = this.jwtService.verify(token, {
-        secret: this.jwtConfiguration.secret,
-      });
-
-      const user = await this.userRepository.findOne({
-        where: { id: decodedToken.sub },
-      });
-      if (!user) {
-        throw new UnauthorizedException('User not found.');
-      }
-
-      const resetPassToken = await this.authRepository.getResetPasswordToken(
-        user.email,
-      );
-
-      if (!resetPassToken || resetPassToken !== token) {
-        throw new UnauthorizedException(
-          'Invalid or expired reset password token.',
-        );
-      }
-
-      user.password = await this.hachingService.hash(resetPasswordDto.password);
-      await this.userRepository.save(user);
-
-      await this.authRepository.deleteResetPasswordToken(user.email);
-
-      return 'Password has been successfully reset.';
-    } catch (error) {
-      this.logger.error('Error during password reset process', error.stack);
-      if (
-        error instanceof JsonWebTokenError ||
-        error instanceof UnauthorizedException ||
-        error instanceof BadRequestException
-      ) {
-        throw error;
-      }
-      throw new BadRequestException(
-        'An error occurred during the password reset process.',
-      );
-    }
-  }
-
   private async generateToken(user: User): Promise<TokensInterface> {
     try {
       const [accessToken, refreshToken] = await Promise.all([
@@ -259,7 +186,11 @@ export class AuthService {
     }
   }
 
-  private async signToken<T>(userId: number, expiresIn: number, payload?: T) {
+  private async signToken<T>(
+    userId: number,
+    expiresIn: number,
+    payload?: T,
+  ): Promise<string> {
     try {
       const token = await this.jwtService.signAsync(
         {

@@ -27,15 +27,16 @@ export class AuthRepository {
     return true;
   }
 
-  async addResetPasswordToken(email: string, token: string): Promise<void> {
-    await this.redis.set(email, token, 'EX', 60 * 60);
+  async saveTokenWithEmail(email: string, token: string): Promise<boolean> {
+    await this.redis.set(email, token, 'EX', 60 * 60 * 24);
+    return true;
+  }
+
+  async getTokenWithEmail(email: string): Promise<string | null> {
+    return this.redis.get(email);
   }
 
   async getResetPasswordToken(email: string): Promise<string | null> {
     return this.redis.get(email);
-  }
-
-  async deleteResetPasswordToken(email: string): Promise<void> {
-    await this.redis.del(email);
   }
 }
