@@ -1,6 +1,6 @@
 services:
-  db:
-    container_name: db
+  database:
+    container_name: database
     image: postgres
     ports:
       - "${DB_PORT}:${DB_PORT}"
@@ -21,7 +21,7 @@ services:
     ports:
       - "${PORT}:${PORT}"
     depends_on:
-      - db
+      - database
     volumes:
       - "./src:/usr/src/app/src"
       - "/usr/src/app/node_modules/"

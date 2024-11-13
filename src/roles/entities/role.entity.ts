@@ -1,10 +1,10 @@
 import { Entity, Column, ManyToMany } from 'typeorm';
-import { BaseEntityMixin, IdEntity } from '../../core/mixins/entity-mixins';
+import { IdEntity } from '../../core/mixins/entity-mixins';
 import { Permission } from '../../permissions/entities/permission.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('roles')
-export class Role extends IdEntity(BaseEntityMixin) {
+export class Role extends IdEntity(class {}) {
   @Column({ unique: true })
   name: string;
 

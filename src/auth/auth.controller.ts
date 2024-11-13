@@ -1,64 +1,95 @@
 import {
   Body,
   Controller,
-  HttpCode,
-  HttpStatus,
-  Param,
+  Get,
   Post,
+  Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiBody,
   ApiOperation,
   ApiResponse,
   ApiTags,
+  ApiBody,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { Auth } from './decorators/auth.decorator';
 import { AuthType } from './enums/auth-type.enum';
-import { SignUpDto } from './dto/sign-up.dto';
-import { SignInDto } from './dto/sign-in.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
-import { UpdatePasswordDto } from './dto/update-password.dto';
-import { TokensInterface } from './interfaces/token.interface';
-import { PermissionsGuard } from '../permissions/guards/permissions.guard';
-import { Permissions } from '../permissions/decorators/permissions.decorator';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { ConfigService } from '@nestjs/config';
+import { EmailDto } from './dto/email.dto';
+import { CurrentEmail } from './decorators/current-email.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Auth(AuthType.None)
-  @Post('sign-up')
+  @Post('send-auth-email')
+  @ApiOperation({ summary: 'Send authentication email' })
+  @ApiBody({ type: EmailDto })
   @ApiResponse({
     status: 201,
-    description: 'User has been successfully signed up.',
+    description: `Sign-in link has been sent to your email. Please check your email. OR: Sign-up link has been sent to your email. Please check your email.`,
   })
   @ApiResponse({ status: 400, description: 'Bad request.' })
-  async signUp(@Body() signUpDto: SignUpDto): Promise<string> {
-    return await this.authService.signUp(signUpDto);
+  async sendAuthEmail(@Body() emailDto: EmailDto): Promise<string> {
+    return await this.authService.sendAuthEmail(emailDto);
   }
 
-  @Auth(AuthType.None)
-  @ApiOperation({ summary: 'Sign in a user' })
-  @HttpCode(HttpStatus.OK)
-  @Post('sign-in')
+  @Auth(AuthType.BearerEmailConfirmation)
+  @Post('sign-up')
+  @ApiOperation({ summary: 'Confirm user email' })
   @ApiResponse({
     status: 200,
-    description: 'User has been successfully signed in.',
-    example: {
-      accessToken: 'string',
-      refreshToken: 'string',
+    description: 'Email has been successfully confirmed.',
+    schema: {
+      type: 'object',
+      properties: {
+        accessToken: { type: 'string' },
+        refreshToken: { type: 'string' },
+      },
     },
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized.' })
-  @ApiBody({ type: SignInDto })
-  async signIn(@Body() signInDto: SignInDto): Promise<TokensInterface> {
-    return await this.authService.signIn(signInDto);
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired confirmation link.',
+  })
+  async signUpWithEmail(
+    @CurrentEmail() email: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    return await this.authService.SignUpWithEmail(email);
+  }
+
+  @Auth(AuthType.BearerEmailConfirmation)
+  @Post('sign-in')
+  @ApiOperation({ summary: 'Confirm user email' })
+  @ApiResponse({
+    status: 200,
+    description: 'Email has been successfully confirmed.',
+    schema: {
+      type: 'object',
+      properties: {
+        accessToken: { type: 'string' },
+        refreshToken: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired confirmation link.',
+  })
+  async SignInWithEmail(
+    @CurrentEmail() email: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    return await this.authService.SignInWithEmail(email);
   }
 
   @ApiBearerAuth('JWT-auth')
@@ -67,13 +98,18 @@ export class AuthController {
   @ApiResponse({
     status: 200,
     description: 'Token has been successfully refreshed.',
-    example: {
-      accessToken: 'string',
-      refreshToken: 'string',
+    schema: {
+      type: 'object',
+      properties: {
+        accessToken: { type: 'string' },
+        refreshToken: { type: 'string' },
+      },
     },
   })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
-  async refreshToken(@CurrentUser() user_id: number): Promise<TokensInterface> {
+  async refreshToken(
+    @CurrentUser() user_id: number,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     return await this.authService.refreshToken(user_id);
   }
 
@@ -89,60 +125,19 @@ export class AuthController {
     return await this.authService.logout(user_id);
   }
 
-  @Auth(AuthType.None)
-  @Post('forgot-password')
-  @ApiOperation({ summary: 'Request password reset' })
-  @ApiResponse({ status: 200, description: 'Reset password email sent.' })
-  @ApiResponse({ status: 400, description: 'Bad request.' })
-  async forgotPassword(
-    @Body() forgotPasswordDto: ForgotPasswordDto,
-  ): Promise<string> {
-    return await this.authService.forgotPassword(forgotPasswordDto);
-  }
+  @Auth(AuthType.Google)
+  @Get('google/login')
+  @ApiOperation({ summary: 'Google login' })
+  googleLogin() {}
 
-  @Auth(AuthType.None)
-  @Post('reset-password/:token')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Reset password' })
-  @ApiResponse({
-    status: 200,
-    description: 'Password has been successfully reset.',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized.' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        password: { type: 'string', example: 'newPassword123' },
-        repeatPassword: { type: 'string', example: 'newPassword123' },
-      },
-    },
-  })
-  async resetPassword(
-    @Body() resetPasswordDto: ResetPasswordDto,
-    @Param('token') token: string,
-  ): Promise<string> {
-    return await this.authService.resetPassword(resetPasswordDto, token);
-  }
-
-  @UseGuards(PermissionsGuard)
-  @Permissions('update_user')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Update user password' })
-  @Post('update-password')
-  @ApiResponse({
-    status: 200,
-    description: 'User password has been successfully updated.',
-  })
-  @ApiResponse({ status: 403, description: 'Forbidden.' })
-  @ApiResponse({ status: 500, description: 'Internal server error.' })
-  async updateUserPassword(
-    @Body() updatePasswordDto: UpdatePasswordDto,
-    @CurrentUser() user_id: number,
-  ): Promise<string> {
-    return await this.authService.updateUserPassword(
-      user_id,
-      updatePasswordDto,
+  @Auth(AuthType.Google)
+  @Get('google/callback')
+  @ApiOperation({ summary: 'Google callback' })
+  async googleCallback(@Req() req, @Res() res) {
+    const tokens = await this.authService.googleLogin(req.user.id);
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    res.redirect(
+      `${frontendUrl}?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}`,
     );
   }
 }

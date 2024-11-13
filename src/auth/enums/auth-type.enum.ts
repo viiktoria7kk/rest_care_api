@@ -1,4 +1,6 @@
 export enum AuthType {
-  Bearer = 'Bearer',
   None = 'None',
+  Google = 'Google',
+  Bearer = 'Bearer',
+  BearerEmailConfirmation = 'BearerEmailConfirmation',
 }

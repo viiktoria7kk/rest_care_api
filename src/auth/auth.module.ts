@@ -1,3 +1,4 @@
+// src/auth/auth.module.ts
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { forwardRef, Module } from '@nestjs/common';
@@ -12,10 +13,13 @@ import { ConfigModule } from '@nestjs/config';
 import jwtConfig from '../core/config/jwt.config';
 import { RedisModule } from '../core/redis/redis.module';
 import { MailModule } from '../mails/mail.module';
-import { BcryptService } from './hashing/bcrypt.service';
 import { UsersModule } from '../users/user.module';
 import { Role } from '../roles/entities/role.entity';
-import { HashingService } from './hashing/hashing.service';
+import { PassportModule } from '@nestjs/passport';
+import googleOauthConfig from '../core/config/google-oauth.config';
+import { GoogleStrategy } from './strategies/google.strategy';
+import { EmailJwtGuard } from './guards/email-jwt.guard';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
 
 @Module({
   controllers: [AuthController],
@@ -24,18 +28,19 @@ import { HashingService } from './hashing/hashing.service';
     { provide: APP_GUARD, useClass: AuthenticationGuard },
     JwtAuthGuard,
     AuthRepository,
-    {
-      provide: HashingService,
-      useClass: BcryptService,
-    },
+    GoogleStrategy,
+    EmailJwtGuard,
+    GoogleAuthGuard,
   ],
   imports: [
     TypeOrmModule.forFeature([User, AuthRepository, Role]),
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
+    ConfigModule.forFeature(googleOauthConfig),
     forwardRef(() => UsersModule),
     RedisModule,
     MailModule,
+    PassportModule,
   ],
   exports: [AuthService, AuthRepository],
 })

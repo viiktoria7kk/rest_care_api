@@ -1,8 +1,4 @@
-import {
-  BaseEntityMixin,
-  IdEntity,
-  TimestampEntity,
-} from '../../core/mixins/entity-mixins';
+import { IdEntity, TimestampEntity } from '../../core/mixins/entity-mixins';
 import {
   Column,
   Entity,
@@ -11,16 +7,13 @@ import {
   ManyToMany,
   OneToOne,
 } from 'typeorm';
-import { File } from '../../files/entities/file.entity';
 import { Role } from '../../roles/entities/role.entity';
+import { File } from '../../files/entities/file.entity';
 
 @Entity('users')
-export class User extends TimestampEntity(IdEntity(BaseEntityMixin)) {
+export class User extends TimestampEntity(IdEntity(class {})) {
   @Column({ unique: true })
   email: string;
-
-  @Column()
-  password: string;
 
   @Column({ nullable: true })
   first_name: string;
@@ -31,9 +24,21 @@ export class User extends TimestampEntity(IdEntity(BaseEntityMixin)) {
   @Column({ nullable: true })
   avatar_file_id: number;
 
+  @Column({ type: 'date', nullable: true })
+  date_of_birth: Date;
+
+  @Column({ nullable: true })
+  car: string;
+
+  @Column({ nullable: true })
+  sex: string;
+
   @OneToOne(() => File)
   @JoinColumn({ name: 'avatar_file_id' })
   avatarFile: File;
+
+  @Column({ nullable: true })
+  avatar: string;
 
   @ManyToMany(() => Role, (role) => role.users, {
     onDelete: 'CASCADE',
